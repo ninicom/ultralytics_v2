@@ -177,37 +177,12 @@ class CustomModule(nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
         self.down = nn.Sequential(
-            nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=2, padding=1, groups=in_channels),
-            nn.BatchNorm2d(in_channels),
-            nn.SiLU()
-        )
-        self.edge = nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1, bias=False)
-        with torch.no_grad():
-            self.edge.weight.copy_(self._init_edge_filter(in_channels))
-        self.edge.weight.requires_grad = False
-
-        self.use_fft = True
-        self.pointwise = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=1),
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(out_channels),
             nn.SiLU()
-        )
-
-    def _init_edge_filter(self, C):
-        kernel = torch.tensor([[-1, -2, -1],
-                               [ 0,  0,  0],
-                               [ 1,  2,  1]], dtype=torch.float32).unsqueeze(0).unsqueeze(0)
-        return kernel.repeat(C, 1, 1, 1)
+        )    
 
     def forward(self, x):
         x = self.down(x)
-        edge_feat = self.edge(x)
-
-        if self.use_fft:
-            fft = torch.fft.fft2(x, dim=(-2, -1))
-            mag = torch.abs(fft).mean(dim=1, keepdim=True)
-            mag = F.interpolate(mag, size=x.shape[-2:], mode='bilinear', align_corners=False)
-            x = x + mag
-
-        out = self.pointwise(x + edge_feat)
-        return out
+        
+        return x
