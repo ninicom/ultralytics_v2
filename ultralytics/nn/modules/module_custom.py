@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torchvision.utils import save_image
+import os
 
 class SCFBlock(nn.Module):
     """Spatial-Channel Fusion Block for feature enhancement."""
@@ -171,34 +173,28 @@ class LFAB(nn.Module):
         out = self.act(self.bn(self.restore(out)))
         return out
     
-class UADB(nn.Module):
-    """Unified Attention and Aggregation Block."""
-    def __init__(self, channels=3):
+class CustomModule(nn.Module):
+    def __init__(self, in_channels, out_channel, *args):
         super().__init__()
-        self.channels = channels
+        self.branch1 = DAB(in_channels)
+        self.branch2 = LFAB(in_channels)
+        self.global_interaction = nn.Sequential(
+            nn.Conv2d(in_channels*2, in_channels, kernel_size=1, stride=1, padding=0),
+            nn.BatchNorm2d(in_channels),
+            nn.SiLU()
+        )
+        self.conv1 = nn.Conv2d(in_channels, out_channel, kernel_size=3, stride=2, padding=1)
+        self.bn1 = nn.BatchNorm2d(out_channel)
+        self.activation = nn.SiLU()
 
-        # Initial pointwise convolution
-        self.conv1 = nn.Conv2d(channels, channels, kernel_size=1, stride=1)
-        
-        self.dab1 = DAB(channels)
-        self.lfab1 = LFAB(channels)
-        
-        # Final pointwise convolution
-        self.conv2 = nn.Conv2d(channels, channels, kernel_size=1, stride=1)
-        self.bn = nn.BatchNorm2d(channels)
-        self.silu = nn.SiLU()
-    
     def forward(self, x):
-        """Forward pass for UADB.
-        
-        Args:
-            x (torch.Tensor): Input tensor of shape [B, C, H, W].
-        Returns:
-            torch.Tensor: Output tensor of shape [B, C, H, W].
-        """
+        x1 = self.branch1(x)
+        x2 = self.branch2(x)
+        x = torch.cat([x1, x2], dim=1)  # Concatenate along channel dimension
+        x = self.global_interaction(x)
+
         x = self.conv1(x)
-        x1 = self.dab1(x)
-        x2 = self.lfab1(x)
-        out = x1 + x2
-        out = self.silu(self.bn(self.conv2(out)))
-        return out
+        x = self.bn1(x)
+        x = self.activation(x)
+
+        return x

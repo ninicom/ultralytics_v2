@@ -1,7 +1,11 @@
-import sys
-import os
+from ultralytics import YOLO
 
-# Trỏ trực tiếp đến thư mục chứa YOLO
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../ultralytics/ultralytics')))
+model = YOLO(r'D:\ultralytics_v2\Model_yaml\yolov11n_custom.yaml')
 
-from engine.model import YOLO  # import trực tiếp
+
+# Huấn luyện mô hình với cấu hình dữ liệu
+model.train(data=r'D:\fish-disease-object-detect.v1i.yolov8\data.yaml',
+            epochs=1,  # Số lượng epoch
+            imgsz=640, # Kích thước ảnh đầu vào
+            save_period=5,
+            device='cpu')  # train trên 2 cpu 0 và 1 (train trên 1 cpu device=0)

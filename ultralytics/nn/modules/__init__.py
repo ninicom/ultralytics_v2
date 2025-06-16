@@ -107,7 +107,7 @@ from .module_custom import (
     ContextBlock,
     DAB,
     LFAB,
-    UADB
+    CustomModule
 )
 
 __all__ = (
@@ -115,7 +115,7 @@ __all__ = (
     "ContextBlock",
     "DAB",
     "LFAB",
-    "UADB",
+    "CustomModule",
     "Conv",
     "Conv2",
     "LightConv",
