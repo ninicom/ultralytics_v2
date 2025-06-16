@@ -174,27 +174,28 @@ class LFAB(nn.Module):
         return out
     
 class CustomModule(nn.Module):
-    def __init__(self, in_channels, out_channel, *args):
+    def __init__(self, in_channels, out_channels, *args):
         super().__init__()
-        self.branch1 = DAB(in_channels)
-        self.branch2 = LFAB(in_channels)
-        self.global_interaction = nn.Sequential(
-            nn.Conv2d(in_channels*2, in_channels, kernel_size=1, stride=1, padding=0),
-            nn.BatchNorm2d(in_channels),
-            nn.SiLU()
-        )
-        self.conv1 = nn.Conv2d(in_channels, out_channel, kernel_size=3, stride=2, padding=1)
-        self.bn1 = nn.BatchNorm2d(out_channel)
-        self.activation = nn.SiLU()
+        self.down = nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=2, padding=1, groups=in_channels)
+        self.edge = nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1, bias=False)
+        self.use_fft = True
+        self.pointwise = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+
+    def _init_edge_filter(self, C):
+        # simple directional filter (e.g., vertical edge)
+        kernel = torch.tensor([[-1, -2, -1],
+                               [ 0,  0,  0],
+                               [ 1,  2,  1]], dtype=torch.float32).unsqueeze(0).unsqueeze(0)
+        return kernel.repeat(C, 1, 1, 1)
 
     def forward(self, x):
-        x1 = self.branch1(x)
-        x2 = self.branch2(x)
-        x = torch.cat([x1, x2], dim=1)  # Concatenate along channel dimension
-        x = self.global_interaction(x)
+        x = self.down(x)
+        edge = self.edge(x)
 
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = self.activation(x)
+        if self.use_fft:
+            # Optional: FFT magnitude pooling (lightweight)
+            fft = torch.fft.fft2(x, dim=(-2, -1))
+            mag = torch.abs(fft).mean(dim=1, keepdim=True)
+            x = x + mag  # enhance high-frequency zones
 
-        return x
+        return self.pointwise(edge)
