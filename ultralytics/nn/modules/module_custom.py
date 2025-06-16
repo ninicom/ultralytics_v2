@@ -177,25 +177,34 @@ class CustomModule(nn.Module):
     def __init__(self, in_channels, out_channels, *args):
         super().__init__()
         self.down = nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=2, padding=1, groups=in_channels)
+        self.bn1 = nn.BatchNorm2d(in_channels)
+        self.act1 = nn.SiLU()
+
         self.edge = nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1, bias=False)
+        with torch.no_grad():
+            self.edge.weight.copy_(self._init_edge_filter(in_channels))
+        self.edge.weight.requires_grad = False
+
         self.use_fft = True
         self.pointwise = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.act2 = nn.SiLU()
 
     def _init_edge_filter(self, C):
-        # simple directional filter (e.g., vertical edge)
         kernel = torch.tensor([[-1, -2, -1],
                                [ 0,  0,  0],
                                [ 1,  2,  1]], dtype=torch.float32).unsqueeze(0).unsqueeze(0)
         return kernel.repeat(C, 1, 1, 1)
 
     def forward(self, x):
-        x = self.down(x)
-        edge = self.edge(x)
+        x = self.act1(self.bn1(self.down(x)))
+        edge_feat = self.edge(x)
 
         if self.use_fft:
-            # Optional: FFT magnitude pooling (lightweight)
             fft = torch.fft.fft2(x, dim=(-2, -1))
             mag = torch.abs(fft).mean(dim=1, keepdim=True)
-            x = x + mag  # enhance high-frequency zones
+            mag = F.interpolate(mag, size=x.shape[-2:], mode='bilinear', align_corners=False)
+            x = x + mag
 
-        return self.pointwise(edge)
+        out = self.pointwise(edge_feat + x)
+        return self.act2(self.bn2(out))
