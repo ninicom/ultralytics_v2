@@ -174,21 +174,24 @@ class LFAB(nn.Module):
         return out
     
 class CustomModule(nn.Module):
-    def __init__(self, in_channels, out_channels, *args):
+    def __init__(self, in_channels, out_channels):
         super().__init__()
-        self.down = nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=2, padding=1, groups=in_channels)
-        self.bn1 = nn.BatchNorm2d(in_channels)
-        self.act1 = nn.SiLU()
-
+        self.down = nn.Sequential(
+            nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=2, padding=1, groups=in_channels),
+            nn.BatchNorm2d(in_channels),
+            nn.SiLU()
+        )
         self.edge = nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1, bias=False)
         with torch.no_grad():
             self.edge.weight.copy_(self._init_edge_filter(in_channels))
         self.edge.weight.requires_grad = False
 
         self.use_fft = True
-        self.pointwise = nn.Conv2d(in_channels, out_channels, kernel_size=1)
-        self.bn2 = nn.BatchNorm2d(out_channels)
-        self.act2 = nn.SiLU()
+        self.pointwise = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size=1),
+            nn.BatchNorm2d(out_channels),
+            nn.SiLU()
+        )
 
     def _init_edge_filter(self, C):
         kernel = torch.tensor([[-1, -2, -1],
@@ -197,7 +200,7 @@ class CustomModule(nn.Module):
         return kernel.repeat(C, 1, 1, 1)
 
     def forward(self, x):
-        x = self.act1(self.bn1(self.down(x)))
+        x = self.down(x)
         edge_feat = self.edge(x)
 
         if self.use_fft:
@@ -206,5 +209,5 @@ class CustomModule(nn.Module):
             mag = F.interpolate(mag, size=x.shape[-2:], mode='bilinear', align_corners=False)
             x = x + mag
 
-        out = self.pointwise(edge_feat + x)
-        return self.act2(self.bn2(out))
+        out = self.pointwise(x + edge_feat)
+        return out
