@@ -17,6 +17,9 @@ from ultralytics.nn.tasks import (
     YOLOESegModel,
 )
 from ultralytics.utils import ROOT, YAML
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
 
 class YOLO(Model):
@@ -441,3 +444,28 @@ class YOLOE(Model):
             self.predictor = None  # reset predictor
 
         return super().predict(source, stream, **kwargs)
+
+# Lớp GradCAM đã sửa
+class YOLOv8GradCAM(nn.Module):
+    def __init__(self, base_model, feature_module, target_layer):
+        super(YOLOv8GradCAM, self).__init__()
+        self.model = base_model
+        self.feature_module = feature_module
+        self.target_layer = target_layer
+
+    def forward(self, x):
+        # Forward pass up to the target layer
+        for layer_name, layer in self.model._modules[self.feature_module]._modules.items():
+            x = layer(x)
+            if layer_name == self.target_layer:
+                break
+
+        # Grad-CAM calculation
+        feature_map = x
+        _, _, H, W = feature_map.size()
+        cam = F.relu(feature_map)  # Apply ReLU
+        cam = F.adaptive_avg_pool2d(cam, 1)  # Global average pooling
+        cam = torch.mul(feature_map, cam)  # Element-wise multiplication
+        cam = cam.sum(dim=1, keepdim=True)  # Channel-wise sum
+
+        return cam

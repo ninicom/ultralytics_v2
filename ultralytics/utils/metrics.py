@@ -143,6 +143,81 @@ def bbox_iou(
         return iou - (c_area - union) / c_area  # GIoU https://arxiv.org/pdf/1902.09630.pdf
     return iou  # IoU
 
+def bbox_iou2(
+    box1: torch.Tensor,
+    box2: torch.Tensor,
+    xywh: bool = True,
+    SIoU: bool = True,
+    theta: float = 5.5,
+    eps: float = 1e-7,
+) -> torch.Tensor:
+    """
+    Calculate the Intersection over Union (IoU) between bounding boxes.
+
+    This function supports various shapes for `box1` and `box2` as long as the last dimension is 4.
+    For instance, you may pass tensors shaped like (4,), (N, 4), (B, N, 4), or (B, N, 1, 4).
+    Internally, the code will split the last dimension into (x, y, w, h) if `xywh=True`,
+    or (x1, y1, x2, y2) if `xywh=False`.
+
+    Args:
+        box1 (torch.Tensor): A tensor representing one or more bounding boxes, with the last dimension being 4.
+        box2 (torch.Tensor): A tensor representing one or more bounding boxes, with the last dimension being 4.
+        xywh (bool, optional): If True, input boxes are in (x, y, w, h) format. If False, input boxes are in
+                               (x1, y1, x2, y2) format.
+
+    Returns:
+        (torch.Tensor): IoU, GIoU, DIoU, or CIoU values depending on the specified flags.
+    """
+    # Get the coordinates of bounding boxes
+    if xywh:  # transform from xywh to xyxy
+        (x1, y1, w1, h1), (x2, y2, w2, h2) = box1.chunk(4, -1), box2.chunk(4, -1)
+        w1_, h1_, w2_, h2_ = w1 / 2, h1 / 2, w2 / 2, h2 / 2
+        b1_x1, b1_x2, b1_y1, b1_y2 = x1 - w1_, x1 + w1_, y1 - h1_, y1 + h1_
+        b2_x1, b2_x2, b2_y1, b2_y2 = x2 - w2_, x2 + w2_, y2 - h2_, y2 + h2_
+    else:  # x1, y1, x2, y2 = box1
+        b1_x1, b1_y1, b1_x2, b1_y2 = box1.chunk(4, -1)
+        b2_x1, b2_y1, b2_x2, b2_y2 = box2.chunk(4, -1)
+        w1, h1 = b1_x2 - b1_x1, b1_y2 - b1_y1 + eps
+        w2, h2 = b2_x2 - b2_x1, b2_y2 - b2_y1 + eps
+
+    # Intersection area
+    inter = (b1_x2.minimum(b2_x2) - b1_x1.maximum(b2_x1)).clamp_(0) * (
+        b1_y2.minimum(b2_y2) - b1_y1.maximum(b2_y1)
+    ).clamp_(0)
+
+    # Union Area
+    union = w1 * h1 + w2 * h2 - inter + eps
+    
+    # IoU
+    iou = inter / union
+    if SIoU:
+        # tính chi phí góc (angel cost)
+        ch = torch.max(b1_x1, b2_x1) -torch. min(b1_x1, b2_x2)  # khoảng cách hai tâm theo trục x
+        sigma = torch.sqrt((b1_x1 - b2_x2) ** 2 + (b1_y1 - b2_y2) ** 2)  # khoảng cách hai tâm hộp
+        sin_theta = ch / sigma  # sin của góc giữa hai hộp
+        angle = torch.arcsin(sin_theta.clamp(-1 + eps, 1 - eps))  # tránh NaN
+        angle_cost = 1 - 2 * torch.sin(angle - torch.pi / 4) ** 2 # chi phí góc
+
+
+        # tính chi phí khoảng cách (distance cost)
+        cw = torch.max(b1_y1, b2_y1) - torch.min(b1_y1, b2_y2)  # khoảng cách hai tâm theo trục y
+        h = torch.max(b1_x2, b2_x2) - torch.min(b1_x2, b2_x1)  # chiều cao của hộp bao quanh hai hộp
+        w = torch.max(b1_y2, b2_y2) - torch.min(b1_y2, b2_y1)  # chiều rộng của hộp bao quanh hai hộp
+        px = (ch/h)**2
+        py = (cw/w)**2
+        gamma = 2 - angle_cost  # gamma là hệ số điều chỉnh chi phí góc
+        distance_cost = 2 - torch.exp(-gamma*px) - torch.exp(-gamma*py)  # chi phí khoảng cách
+
+        # tính chi phí hình học (shape cost)
+        omega_w = torch.abs(w1 - w2)/torch.max(w1, w2)  # chi phí hình học theo chiều rộng
+        omega_h = torch.abs(h1 - h2)/torch.max(h1, h2)  # chi phí hình học theo chiều cao
+        shape_cost = (1-torch.exp(-omega_w))**theta + (1-torch.exp(-omega_h))**theta  # chi phí hình học
+        # Tính toán SIoU
+        SIoU = 1 - iou + (distance_cost + shape_cost)/2
+        return SIoU
+
+    return iou  # IoU
+
 
 def mask_iou(mask1: torch.Tensor, mask2: torch.Tensor, eps: float = 1e-7) -> torch.Tensor:
     """

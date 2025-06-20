@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.init import constant_, xavier_uniform_
 
+from .grad_cam import grad_cam
 from ultralytics.utils.tal import TORCH_1_10, dist2bbox, dist2rbox, make_anchors
 from ultralytics.utils.torch_utils import fuse_conv_and_bn, smart_inference_mode
 
@@ -112,6 +113,8 @@ class Detect(nn.Module):
             self.one2one_cv3 = copy.deepcopy(self.cv3)
 
     def forward(self, x: List[torch.Tensor]) -> Union[List[torch.Tensor], Tuple]:
+        
+        grad_cam(x[0])  # Example usage of grad_cam function, can be removed if not needed
         """Concatenate and return predicted bounding boxes and class probabilities."""
         if self.end2end:
             return self.forward_end2end(x)
@@ -134,6 +137,7 @@ class Detect(nn.Module):
             outputs (dict | tuple): Training mode returns dict with one2many and one2one outputs.
                 Inference mode returns processed detections or tuple with detections and raw outputs.
         """
+        grad_cam(x[0])  # Example usage of grad_cam function, can be removed if not needed
         x_detach = [xi.detach() for xi in x]
         one2one = [
             torch.cat((self.one2one_cv2[i](x_detach[i]), self.one2one_cv3[i](x_detach[i])), 1) for i in range(self.nl)
@@ -158,6 +162,7 @@ class Detect(nn.Module):
             (torch.Tensor): Concatenated tensor of decoded bounding boxes and class probabilities.
         """
         # Inference path
+        grad_cam(x[0])  # Example usage of grad_cam function, can be removed if not needed
         shape = x[0].shape  # BCHW
         x_cat = torch.cat([xi.view(shape[0], self.no, -1) for xi in x], 2)
         if self.format != "imx" and (self.dynamic or self.shape != shape):
