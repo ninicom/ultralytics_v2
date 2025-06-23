@@ -187,20 +187,29 @@ def bbox_iou2(
 
     # Union Area
     union = w1 * h1 + w2 * h2 - inter + eps
-    
     # IoU
     iou = inter / union
     if SIoU:
         # tính chi phí góc (angel cost)
-        ch = torch.max(b1_x1, b2_x1) -torch. min(b1_x1, b2_x2)  # khoảng cách hai tâm theo trục x
-        sigma = torch.sqrt((b1_x1 - b2_x2) ** 2 + (b1_y1 - b2_y2) ** 2)  # khoảng cách hai tâm hộp
-        sin_theta = ch / sigma  # sin của góc giữa hai hộp
+
+        # tính vị trí tâm x của hai hộp
+        center_x1 = (b1_x1 + b1_x2) / 2
+        center_x2 = (b2_x1 + b2_x2) / 2
+        ch = torch.abs(center_x1 - center_x2)  # khoảng cách hai tâm theo trục x
+        # tính vị trí tâm y của hai hộp
+        center_y1 = (b1_y1 + b1_y2) / 2
+        center_y2 = (b2_y1 + b2_y2) / 2
+        cw = torch.abs(center_y1 - center_y2)  # khoảng cách hai tâm theo trục y
+
+        sigma = torch.sqrt((ch) ** 2 + (cw) ** 2)  # khoảng cách hai tâm hộp
+
+        # tính sin của góc giữa hai hộp (lấy min(ch, cw) để lấy góc nhỏ nhất)
+        # tránh chia cho 0 bằng cách sử dụng torch.where
+        sin_theta = torch.where(sigma < eps, torch.zeros_like(sigma), torch.minimum(ch, cw) / (sigma + eps))  
         angle = torch.arcsin(sin_theta.clamp(-1 + eps, 1 - eps))  # tránh NaN
         angle_cost = 1 - 2 * torch.sin(angle - torch.pi / 4) ** 2 # chi phí góc
 
-
         # tính chi phí khoảng cách (distance cost)
-        cw = torch.max(b1_y1, b2_y1) - torch.min(b1_y1, b2_y2)  # khoảng cách hai tâm theo trục y
         h = torch.max(b1_x2, b2_x2) - torch.min(b1_x2, b2_x1)  # chiều cao của hộp bao quanh hai hộp
         w = torch.max(b1_y2, b2_y2) - torch.min(b1_y2, b2_y1)  # chiều rộng của hộp bao quanh hai hộp
         px = (ch/h)**2
@@ -213,8 +222,8 @@ def bbox_iou2(
         omega_h = torch.abs(h1 - h2)/torch.max(h1, h2)  # chi phí hình học theo chiều cao
         shape_cost = (1-torch.exp(-omega_w))**theta + (1-torch.exp(-omega_h))**theta  # chi phí hình học
         # Tính toán SIoU
-        SIoU = 1 - iou + (distance_cost + shape_cost)/2
-        return SIoU
+        siou_output = 1 - iou + (distance_cost + shape_cost)/2
+        return siou_output
 
     return iou  # IoU
 
