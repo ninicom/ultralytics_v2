@@ -190,7 +190,7 @@ def bbox_iou2(
     # IoU
     iou = inter / union
     if SIoU:
-        print(" SIoU")
+        #print(" SIoU")
         # tính chi phí góc (angel cost)
 
         # tính vị trí tâm x của hai hộp
