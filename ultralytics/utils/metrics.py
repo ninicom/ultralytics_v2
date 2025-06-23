@@ -222,8 +222,9 @@ def siou_loss(
         omega_w = torch.abs(w1 - w2)/(torch.max(w1, w2) + eps)  # chi phí hình học theo chiều rộng (tránh chia cho 0)
         omega_h = torch.abs(h1 - h2)/(torch.max(h1, h2) + eps)  # chi phí hình học theo chiều cao (tránh chia cho 0)
         shape_cost = (1-torch.exp(-omega_w))**theta + (1-torch.exp(-omega_h))**theta  # chi phí hình học
+
         # Tính toán SIoU
-        siou_output = torch.clamp(1 - iou + (distance_cost + shape_cost)/2, min=0)
+        siou_output = torch.clamp(iou + (distance_cost + shape_cost)/2, min=0)
         return siou_output
 
     return iou  # IoU
