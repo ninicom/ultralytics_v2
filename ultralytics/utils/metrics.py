@@ -196,11 +196,11 @@ def siou_loss(
         # tính vị trí tâm x của hai hộp
         center_x1 = (b1_x1 + b1_x2) / 2
         center_x2 = (b2_x1 + b2_x2) / 2
-        ch = torch.abs(center_x1 - center_x2)  # khoảng cách hai tâm theo trục x
+        cw = torch.abs(center_x1 - center_x2)  # khoảng cách hai tâm theo trục x
         # tính vị trí tâm y của hai hộp
         center_y1 = (b1_y1 + b1_y2) / 2
         center_y2 = (b2_y1 + b2_y2) / 2
-        cw = torch.abs(center_y1 - center_y2)  # khoảng cách hai tâm theo trục y
+        ch = torch.abs(center_y1 - center_y2)  # khoảng cách hai tâm theo trục y
 
         sigma = torch.sqrt((ch) ** 2 + (cw) ** 2)  # khoảng cách hai tâm hộp
 
@@ -211,19 +211,19 @@ def siou_loss(
         angle_cost = 1 - 2 * torch.sin(angle - torch.pi / 4) ** 2 # chi phí góc
 
         # tính chi phí khoảng cách (distance cost)
-        h = torch.max(b1_y2, b2_y2) - torch.min(b1_y2, b2_y1)  # chiều cao của hộp bao quanh hai hộp
-        w = torch.max(b1_x2, b2_x2) - torch.min(b1_x2, b2_x1)  # chiều rộng của hộp bao quanh hai hộp
-        px = (ch/h)**2
-        py = (cw/w)**2
+        h = torch.max(b1_y2, b2_y2) - torch.min(b1_y1, b2_y1)  # chiều cao của hộp bao quanh hai hộp
+        w = torch.max(b1_x2, b2_x2) - torch.min(b1_x1, b2_x1)  # chiều rộng của hộp bao quanh hai hộp
+        px = (cw/w)**2
+        py = (ch/h)**2
         gamma = 2 - angle_cost  # gamma là hệ số điều chỉnh chi phí góc
         distance_cost = 2 - torch.exp(-gamma*px) - torch.exp(-gamma*py)  # chi phí khoảng cách
 
         # tính chi phí hình học (shape cost)
-        omega_w = torch.abs(w1 - w2)/torch.max(w1, w2)  # chi phí hình học theo chiều rộng
-        omega_h = torch.abs(h1 - h2)/torch.max(h1, h2)  # chi phí hình học theo chiều cao
+        omega_w = torch.abs(w1 - w2)/(torch.max(w1, w2) + eps)  # chi phí hình học theo chiều rộng (tránh chia cho 0)
+        omega_h = torch.abs(h1 - h2)/(torch.max(h1, h2) + eps)  # chi phí hình học theo chiều cao (tránh chia cho 0)
         shape_cost = (1-torch.exp(-omega_w))**theta + (1-torch.exp(-omega_h))**theta  # chi phí hình học
         # Tính toán SIoU
-        siou_output = 1 - iou + (distance_cost + shape_cost)/2
+        siou_output = torch.clamp(1 - iou + (distance_cost + shape_cost)/2, min=0)
         return siou_output
 
     return iou  # IoU
