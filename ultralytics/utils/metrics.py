@@ -143,7 +143,7 @@ def bbox_iou(
         return iou - (c_area - union) / c_area  # GIoU https://arxiv.org/pdf/1902.09630.pdf
     return iou  # IoU
 
-def bbox_iou2(
+def siou_loss(
     box1: torch.Tensor,
     box2: torch.Tensor,
     xywh: bool = True,
@@ -211,8 +211,8 @@ def bbox_iou2(
         angle_cost = 1 - 2 * torch.sin(angle - torch.pi / 4) ** 2 # chi phí góc
 
         # tính chi phí khoảng cách (distance cost)
-        h = torch.max(b1_x2, b2_x2) - torch.min(b1_x2, b2_x1)  # chiều cao của hộp bao quanh hai hộp
-        w = torch.max(b1_y2, b2_y2) - torch.min(b1_y2, b2_y1)  # chiều rộng của hộp bao quanh hai hộp
+        h = torch.max(b1_y2, b2_y2) - torch.min(b1_y2, b2_y1)  # chiều cao của hộp bao quanh hai hộp
+        w = torch.max(b1_x2, b2_x2) - torch.min(b1_x2, b2_x1)  # chiều rộng của hộp bao quanh hai hộp
         px = (ch/h)**2
         py = (cw/w)**2
         gamma = 2 - angle_cost  # gamma là hệ số điều chỉnh chi phí góc
