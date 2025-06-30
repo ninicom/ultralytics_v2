@@ -224,7 +224,7 @@ def siou_loss(
         shape_cost = (1-torch.exp(-omega_w))**theta + (1-torch.exp(-omega_h))**theta  # chi phí hình học
 
         # Tính toán SIoU
-        siou_output = iou + (distance_cost + shape_cost)/2
+        siou_output = iou - (distance_cost + shape_cost)/2
         return siou_output
 
     return iou  # IoU

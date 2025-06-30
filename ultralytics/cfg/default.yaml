@@ -123,5 +123,8 @@ erasing: 0.4 # (float) probability of random erasing during classification train
 # Custom config.yaml ---------------------------------------------------------------------------------------------------
 cfg: # (str, optional) for overriding defaults.yaml
 
+# Loss function settings -------------------------------------------------------------------------------------------
+loss_type: siou # (str) loss function type, choices=['siou', 'ciou', 'diou', 'giou']
+
 # Tracker settings ------------------------------------------------------------------------------------------------------
 tracker: botsort.yaml # (str) tracker type, choices=[botsort.yaml, bytetrack.yaml]

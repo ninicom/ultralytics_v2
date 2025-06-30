@@ -5,7 +5,7 @@ import torch.nn as nn
 
 from . import LOGGER
 from .checks import check_version
-from .metrics import bbox_iou, probiou
+from .metrics import bbox_iou, probiou, siou_loss
 from .ops import xywhr2xyxyxyxy
 
 TORCH_1_10 = check_version(torch.__version__, "1.10.0")
@@ -26,7 +26,7 @@ class TaskAlignedAssigner(nn.Module):
         eps (float): A small value to prevent division by zero.
     """
 
-    def __init__(self, topk: int = 13, num_classes: int = 80, alpha: float = 1.0, beta: float = 6.0, eps: float = 1e-9):
+    def __init__(self, topk: int = 13, num_classes: int = 80, alpha: float = 1.0, beta: float = 6.0, eps: float = 1e-9, loss_type: str = "siou"):
         """
         Initialize a TaskAlignedAssigner object with customizable hyperparameters.
 
@@ -43,6 +43,7 @@ class TaskAlignedAssigner(nn.Module):
         self.alpha = alpha
         self.beta = beta
         self.eps = eps
+        self.loss_type = loss_type
 
     @torch.no_grad()
     def forward(self, pd_scores, pd_bboxes, anc_points, gt_labels, gt_bboxes, mask_gt):
@@ -198,7 +199,22 @@ class TaskAlignedAssigner(nn.Module):
         Returns:
             (torch.Tensor): IoU values between each pair of boxes.
         """
-        return bbox_iou(gt_bboxes, pd_bboxes, xywh=False, CIoU=True).squeeze(-1).clamp_(0)
+        if self.loss_type == "siou":
+            # SIoU loss
+            iou = siou_loss(gt_bboxes, pd_bboxes, xywh=False, SIoU=True).squeeze(-1).clamp_(0)
+        elif self.loss_type == "ciou":
+            # CIoU loss
+            iou = bbox_iou(gt_bboxes, pd_bboxes, xywh=False, CIoU=True).squeeze(-1).clamp_(0)
+        elif self.loss_type == "diou":
+            # DIoU loss
+            iou = bbox_iou(gt_bboxes, pd_bboxes, xywh=False, DIoU=True).squeeze(-1).clamp_(0)
+        elif self.loss_type == "giou":
+            # GIoU loss
+            iou = bbox_iou(gt_bboxes, pd_bboxes, xywh=False, GIoU=True).squeeze(-1).clamp_(0)
+        else:
+            raise ValueError(f"Unsupported loss type: {self.loss_type}. Supported types are 'siou', 'ciou', 'diou', 'giou'.")
+        
+        return iou
 
     def select_topk_candidates(self, metrics, topk_mask=None):
         """

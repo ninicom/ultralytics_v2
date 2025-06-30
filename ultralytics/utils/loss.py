@@ -11,7 +11,7 @@ from ultralytics.utils.ops import crop_mask, xywh2xyxy, xyxy2xywh
 from ultralytics.utils.tal import RotatedTaskAlignedAssigner, TaskAlignedAssigner, dist2bbox, dist2rbox, make_anchors
 from ultralytics.utils.torch_utils import autocast
 
-from .metrics import siou_loss, probiou
+from .metrics import siou_loss, probiou, bbox_iou
 from .tal import bbox2dist
 
 
@@ -108,10 +108,11 @@ class DFLoss(nn.Module):
 class BboxLoss(nn.Module):
     """Criterion class for computing training losses for bounding boxes."""
 
-    def __init__(self, reg_max: int = 16):
+    def __init__(self, reg_max: int = 16, loss_type: str = "siou"):
         """Initialize the BboxLoss module with regularization maximum and DFL settings."""
         super().__init__()
         self.dfl_loss = DFLoss(reg_max) if reg_max > 1 else None
+        self.loss_type = loss_type.lower()
 
     def forward(
         self,
@@ -125,7 +126,20 @@ class BboxLoss(nn.Module):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Compute IoU and DFL losses for bounding boxes."""
         weight = target_scores.sum(-1)[fg_mask].unsqueeze(-1)
-        iou = siou_loss(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, SIoU=True)
+        if self.loss_type == "siou":
+            # SIoU loss
+            iou = siou_loss(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, SIoU=True)
+        elif self.loss_type == "ciou":
+            # CIoU loss
+            iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True)
+        elif self.loss_type == "diou":
+            # DIoU loss
+            iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, DIoU=True)
+        elif self.loss_type == "giou":
+            # GIoU loss
+            iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, GIoU=True)
+        else:
+            raise ValueError(f"Unsupported loss type: {self.loss_type}. Supported types are 'siou', 'ciou', 'diou', 'giou'.")
         loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
 
         # DFL loss
@@ -194,7 +208,7 @@ class KeypointLoss(nn.Module):
 class v8DetectionLoss:
     """Criterion class for computing training losses for YOLOv8 object detection."""
 
-    def __init__(self, model, tal_topk: int = 10):  # model must be de-paralleled
+    def __init__(self, model, tal_topk: int = 10, loss_type = 'siou'):  # model must be de-paralleled
         """Initialize v8DetectionLoss with model parameters and task-aligned assignment settings."""
         device = next(model.parameters()).device  # get model device
         h = model.args  # hyperparameters
@@ -207,11 +221,14 @@ class v8DetectionLoss:
         self.no = m.nc + m.reg_max * 4
         self.reg_max = m.reg_max
         self.device = device
+        self.loss_type = loss_type.lower()
+        print('')
+        print(f"v8DetectionLoss: Using {self.loss_type} loss type.")
 
         self.use_dfl = m.reg_max > 1
 
-        self.assigner = TaskAlignedAssigner(topk=tal_topk, num_classes=self.nc, alpha=0.5, beta=6.0)
-        self.bbox_loss = BboxLoss(m.reg_max).to(device)
+        self.assigner = TaskAlignedAssigner(topk=tal_topk, num_classes=self.nc, alpha=0.5, beta=6.0, loss_type = self.loss_type)
+        self.bbox_loss = BboxLoss(m.reg_max, loss_type).to(device)
         self.proj = torch.arange(m.reg_max, dtype=torch.float, device=device)
 
     def preprocess(self, targets: torch.Tensor, batch_size: int, scale_tensor: torch.Tensor) -> torch.Tensor:
