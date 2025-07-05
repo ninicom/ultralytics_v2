@@ -148,7 +148,7 @@ def siou_loss(
     box2: torch.Tensor,
     xywh: bool = True,
     SIoU: bool = True,
-    theta: float = 4.0,
+    theta: float = 2.0,
     eps: float = 1e-7,
 ) -> torch.Tensor:
     """
@@ -223,8 +223,15 @@ def siou_loss(
         omega_h = torch.abs(h1 - h2)/(torch.max(h1, h2) + eps)  # chi phí hình học theo chiều cao (tránh chia cho 0)
         shape_cost = (1-torch.exp(-omega_w))**theta + (1-torch.exp(-omega_h))**theta  # chi phí hình học
 
+        # Tính toán DIoU
+        c2 = cw.pow(2) + ch.pow(2) + eps  # convex diagonal squared
+        rho2 = (
+            (b2_x1 + b2_x2 - b1_x1 - b1_x2).pow(2) + (b2_y1 + b2_y2 - b1_y1 - b1_y2).pow(2)
+        ) / 4  # center dist**2
+
+        diou = rho2 / c2
         # Tính toán SIoU
-        siou_output = iou - (distance_cost + shape_cost)/2
+        siou_output = iou - 0.7*(distance_cost + shape_cost)/2 - 0.3*(rho2 / c2)
         return siou_output
 
     return iou  # IoU

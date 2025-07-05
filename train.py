@@ -9,4 +9,4 @@ model.train(data=r'VOC.yaml',
             imgsz=640, # Kích thước ảnh đầu vào
             save_period=5,
             device='cpu',
-            loss_type = 'ciou')  # train trên 2 cpu 0 và 1 (train trên 1 cpu device=0)
+            loss_type = 'siou')  # train trên 2 cpu 0 và 1 (train trên 1 cpu device=0)
