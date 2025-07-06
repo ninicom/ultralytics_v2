@@ -229,10 +229,10 @@ def siou_loss(
             (b2_x1 + b2_x2 - b1_x1 - b1_x2).pow(2) + (b2_y1 + b2_y2 - b1_y1 - b1_y2).pow(2)
         ) / 4  # center dist**2
 
-        diou = rho2 / c2
+        diou = iou - rho2 / c2
         # Tính toán SIoU
-        siou_output = iou - 0.7*(distance_cost + shape_cost)/2 - 0.3*(rho2 / c2)
-        return siou_output
+        siou_output = iou - (distance_cost + shape_cost)/2
+        return siou_output*0.7 + diou*0.3  # Trọng số cho DIoU và SIoU
 
     return iou  # IoU
 
