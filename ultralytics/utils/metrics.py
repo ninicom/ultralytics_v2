@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Tuple, Union
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 
 from ultralytics.utils import LOGGER, DataExportMixin, SimpleClass, TryExcept, checks, plt_settings
 
@@ -223,16 +224,23 @@ def siou_loss(
         omega_h = torch.abs(h1 - h2)/(torch.max(h1, h2) + eps)  # chi phí hình học theo chiều cao (tránh chia cho 0)
         shape_cost = (1-torch.exp(-omega_w))**theta + (1-torch.exp(-omega_h))**theta  # chi phí hình học
 
-        # Tính toán DIoU
-        c2 = cw.pow(2) + ch.pow(2) + eps  # convex diagonal squared
-        rho2 = (
-            (b2_x1 + b2_x2 - b1_x1 - b1_x2).pow(2) + (b2_y1 + b2_y2 - b1_y1 - b1_y2).pow(2)
-        ) / 4  # center dist**2
+        siou = iou - (distance_cost + shape_cost) / 2
 
+        # DIoU
+        c2 = cw.pow(2) + ch.pow(2) + eps
+        rho2 = ((center_x2 - center_x1) ** 2 + (center_y2 - center_y1) ** 2)
         diou = iou - rho2 / c2
-        # Tính toán SIoU
-        siou_output = iou - (distance_cost + shape_cost)/2
-        return siou_output*0.7 + diou*0.3  # Trọng số cho DIoU và SIoU
+
+        # Điều chỉnh trọng số DIoU theo hướng SIoU
+        # Dùng cosine similarity giữa loss scalar (đơn giản, gần đúng)
+        siou_detached = siou.detach()
+        diou_detached = diou.detach()
+        cos_sim = F.cosine_similarity(siou_detached.flatten(), diou_detached.flatten(), dim=0)
+
+        # Nếu loss mâu thuẫn thì giảm trọng số của DIoU
+        diou_weight = torch.where(cos_sim < 0, 0.1, 0.3)
+
+        return siou * 0.7 + diou * diou_weight
 
     return iou  # IoU
 
