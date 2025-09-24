@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from torchvision.utils import save_image
 import os
 
+"""Spatial-Channel Fusion Block"""
 class SCFBlock(nn.Module):
     """Spatial-Channel Fusion Block for feature enhancement."""
     def __init__(self, channels):
@@ -45,6 +46,7 @@ class SCFBlock(nn.Module):
         out = self.branch3(out)  # Final fusion
         return out
     
+""" Residual Block with two depthwise convolutions """
 class ResBlock(nn.Module):
     """Residual Block with two depthwise convolutions."""
     def __init__(self, channels):
@@ -176,13 +178,17 @@ class LFAB(nn.Module):
 class CustomModule(nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
-        self.down = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(out_channels),
-            nn.SiLU()
-        )    
+        self.out_channels = out_channels
+        self.in_channels = in_channels
+
+        self.EEB = SCFBlock(in_channels)
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+        self.bn = nn.BatchNorm2d(out_channels)
+        self.act = nn.SiLU()
 
     def forward(self, x):
-        x = self.down(x)
-        
+        x = self.EEB(x)
+        x = self.conv(x)
+        x = self.bn(x)
+        x = self.act(x)
         return x

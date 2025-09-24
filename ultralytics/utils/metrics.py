@@ -225,23 +225,8 @@ def siou_loss(
         shape_cost = (1-torch.exp(-omega_w))**theta + (1-torch.exp(-omega_h))**theta  # chi phí hình học
 
         siou = iou - (distance_cost + shape_cost) / 2
-
-        # DIoU
-        c2 = cw.pow(2) + ch.pow(2) + eps
-        rho2 = ((center_x2 - center_x1) ** 2 + (center_y2 - center_y1) ** 2)
-        diou = iou - rho2 / c2
-
-        # Điều chỉnh trọng số DIoU theo hướng SIoU
-        # Dùng cosine similarity giữa loss scalar (đơn giản, gần đúng)
-        siou_detached = siou.detach()
-        diou_detached = diou.detach()
-        cos_sim = F.cosine_similarity(siou_detached.flatten(), diou_detached.flatten(), dim=0)
-
-        # Nếu loss mâu thuẫn thì giảm trọng số của DIoU
-        diou_weight = torch.where(cos_sim < 0, 0.1, 0.3)
-
-        return siou * 0.7 + diou * diou_weight
-
+        return siou
+    
     return iou  # IoU
 
 
