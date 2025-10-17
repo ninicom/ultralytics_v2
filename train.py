@@ -1,6 +1,6 @@
 from ultralytics import YOLO
 
-model = YOLO(r'D:\python\ultralytics_v2\Model_yaml\Yolov11n_SCFB.yaml')
+model = YOLO('yolo11n.yaml')
 
 
 # Huấn luyện mô hình với cấu hình dữ liệu

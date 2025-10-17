@@ -29,8 +29,8 @@ class SCFBlock(nn.Module):
         self.branch3 = nn.BatchNorm2d(channels)
 
         # Final output layer: Pointwise convolution for final feature fusion
-        self.out = self.branch3 = nn.Sequential(
-            nn.Conv2d(channels, channels, kernel_size=1),
+        self.out = nn.Sequential(
+            nn.Conv2d(channels*3, channels, kernel_size=1),
             nn.BatchNorm2d(channels),
             nn.SiLU()
         )
@@ -46,7 +46,7 @@ class SCFBlock(nn.Module):
         x1 = self.branch1(x)  # Spatial features
         x2 = self.branch2(x)  # Channel-wise features
         x3 = self.branch3(x)  # Normalized input
-        output = nn.Concat(dim=1)([x1, x2, x3])  # Concatenate features
+        output = torch.cat([x1, x2, x3], dim=1)  # Concatenate features
         output = self.out(output)  # Final fusion
         return output
     
@@ -182,17 +182,8 @@ class LFAB(nn.Module):
 class CustomModule(nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
-        self.out_channels = out_channels
-        self.in_channels = in_channels
-
-        self.EEB = SCFBlock(in_channels)
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
-        self.bn = nn.BatchNorm2d(out_channels)
-        self.act = nn.SiLU()
+        self.SCF = SCFBlock(in_channels)
 
     def forward(self, x):
-        x = self.EEB(x)
-        x = self.conv(x)
-        x = self.bn(x)
-        x = self.act(x)
+        x = self.SCF(x)
         return x
