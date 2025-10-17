@@ -25,8 +25,11 @@ class SCFBlock(nn.Module):
             nn.SiLU()
         )
 
-        # Branch 3: Pointwise convolution for final feature fusion
-        self.branch3 = nn.Sequential(
+        # Branch 3: Batch normalization for feature fusion
+        self.branch3 = nn.BatchNorm2d(channels)
+
+        # Final output layer: Pointwise convolution for final feature fusion
+        self.out = self.branch3 = nn.Sequential(
             nn.Conv2d(channels, channels, kernel_size=1),
             nn.BatchNorm2d(channels),
             nn.SiLU()
@@ -42,9 +45,10 @@ class SCFBlock(nn.Module):
         """
         x1 = self.branch1(x)  # Spatial features
         x2 = self.branch2(x)  # Channel-wise features
-        out = x + x1 + x2     # Merge input with branch outputs
-        out = self.branch3(out)  # Final fusion
-        return out
+        x3 = self.branch3(x)  # Normalized input
+        output = nn.Concat(dim=1)([x1, x2, x3])  # Concatenate features
+        output = self.out(output)  # Final fusion
+        return output
     
 """ Residual Block with two depthwise convolutions """
 class ResBlock(nn.Module):
