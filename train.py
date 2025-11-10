@@ -1,6 +1,6 @@
 from ultralytics import YOLO
 
-model = YOLO('yolo11n.yaml')
+model = YOLO("yolo11n.yaml")  # Load mô hình từ file cấu hình
 
 
 # Huấn luyện mô hình với cấu hình dữ liệu

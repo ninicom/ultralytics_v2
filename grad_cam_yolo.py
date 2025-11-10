@@ -427,15 +427,14 @@ if __name__ == '__main__':
     model = yolo_heatmap(**get_params())
     model(img_path, f'{save_path}/mean.png')
 '''
+
 if __name__ == '__main__':
 
     # --- 1. Thiết lập đường dẫn ---
-    
-    # !!! THAY ĐỔI: Dán đường dẫn tuyệt đối đến ảnh của bạn vào đây
-    target_image_path = r"D:\gill3.jpg" # <<< THAY ĐỔI ĐƯỜNG DẪN NÀY
-    
+    # Thư mục chứa các thư mục con của mỗi lớp (từ code trước)
+    input_base_dir = r"D:\fish_imga_grad" 
     # Thư mục gốc để lưu kết quả Grad-CAM
-    output_base_dir = r"D:\fish_imga_grad_gradcam_single4" # <<< Có thể đổi tên
+    output_base_dir = r"D:\fish_imga_grad_gradcam1"
     
     # Xóa thư mục output cũ nếu tồn tại (để chạy lại cho sạch)
     if os.path.exists(output_base_dir):
@@ -444,100 +443,105 @@ if __name__ == '__main__':
     os.makedirs(output_base_dir, exist_ok=True)
 
 
-    # --- 2. Lấy mapping Tên Lớp -> Index (Giữ nguyên) ---
+    # --- 2. Lấy mapping Tên Lớp -> Index ---
+    # Lấy thông tin model (đặc biệt là 'weight') từ hàm get_params
     base_params = get_params()
     model_weight = base_params['weight']
     
     print("Đang tải model để lấy danh sách tên lớp...")
-    class_names_map = {} # Map {0: 'name1', ...}
     try:
+        # Tải model tạm thời CHỈ để lấy 'names'
         temp_model = YOLO(model_weight)
-        class_names_map = temp_model.names 
-        print(f"Đã tìm thấy {len(class_names_map)} lớp. Mapping: {class_names_map}")
+        class_names_map = temp_model.names # Đây là map {0: 'name1', 1: 'name2', ...}
+        
+        # Đảo ngược map để có: {'name1': 0, 'name2': 1, ...}
+        class_name_to_index_map = {name: idx for idx, name in class_names_map.items()}
+        
+        print(f"Đã tìm thấy {len(class_name_to_index_map)} lớp. Mapping: {class_name_to_index_map}")
         del temp_model # Giải phóng bộ nhớ
     except Exception as e:
         print(f"LỖI: Không thể tải model từ '{model_weight}' để lấy tên lớp. Lỗi: {e}", file=sys.stderr)
-        sys.exit(1)
+        sys.exit(1) # Thoát nếu không tải được model
         
-    # --- 3. Tải Model để dự đoán (Predictor) ---
-    print(f"Đang tải model chính để dự đoán từ: {model_weight}")
+    # Các định dạng ảnh cần tìm
+    image_extensions = ('.jpg', '.jpeg', '.png', '.bmp', '.webp')
+
+    # --- 3. Duyệt qua các thư mục lớp trong input_base_dir ---
+    if not os.path.exists(input_base_dir):
+        print(f"LỖI: Thư mục input '{input_base_dir}' không tồn tại!", file=sys.stderr)
+        sys.exit(1)
+
+    # Lấy danh sách các thư mục con (là tên các lớp)
     try:
-        model_predictor = YOLO(model_weight)
+        class_dirs = [d for d in os.listdir(input_base_dir) if os.path.isdir(os.path.join(input_base_dir, d))]
     except Exception as e:
-        print(f"LỖI: Không thể tải model prediction từ '{model_weight}'. Lỗi: {e}", file=sys.stderr)
+        print(f"LỖI: Không thể đọc thư mục {input_base_dir}. Lỗi: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # --- 4. Xử lý ảnh chỉ định ---
-    print(f"\n--- 🎯 Bắt đầu xử lý ảnh: {target_image_path} ---")
-
-    # Kiểm tra xem đường dẫn có hợp lệ không
-    if not target_image_path or not os.path.exists(target_image_path):
-        print(f"LỖI: Đường dẫn ảnh '{target_image_path}' không tồn tại!", file=sys.stderr)
-        sys.exit(1)
-    if not os.path.isfile(target_image_path):
-        print(f"LỖI: Đường dẫn '{target_image_path}' không phải là một file!", file=sys.stderr)
-        sys.exit(1)
-
-    # Lấy thông tin tên file
-    img_filename = os.path.basename(target_image_path)
-    img_basename = os.path.splitext(img_filename)[0]
+    if not class_dirs:
+        print(f"Không tìm thấy thư mục lớp nào trong: {input_base_dir}")
     
-    # Tạo thư mục con riêng cho ảnh này
-    # Ví dụ: .../gradcam_single/your_image_name
-    img_save_dir = os.path.join(output_base_dir, img_basename)
-    os.makedirs(img_save_dir, exist_ok=True)
-
-    # Copy ảnh gốc vào thư mục kết quả để tiện so sánh
-    shutil.copy(target_image_path, os.path.join(img_save_dir, img_filename))
-    
-    # --- 5. Chạy dự đoán (Predict) để lấy các lớp ---
-    predicted_indices = []
-    try:
-        # Chạy predict, tắt verbose
-        results = model_predictor(target_image_path, verbose=False) 
-        
-        if not results or not results[0].boxes:
-            print(f"  - Ảnh {img_filename}: Không phát hiện đối tượng nào. Bỏ qua.")
-            sys.exit(0)
-
-        # Lấy các class_index *duy nhất* đã được dự đoán
-        predicted_indices = results[0].boxes.cls.unique().cpu().numpy().astype(int)
-        
-        if predicted_indices.size == 0:
-            print(f"  - Ảnh {img_filename}: Không phát hiện đối tượng nào. Bỏ qua.")
-            sys.exit(0)
+    for class_name_str in class_dirs:
+        # --- 4. Lấy Target Class Index ---
+        if class_name_str not in class_name_to_index_map:
+            print(f"Cảnh báo: Tên thư mục '{class_name_str}' không khớp với bất kỳ lớp nào trong model. Bỏ qua...")
+            continue
             
-        class_names_found = [class_names_map.get(idx, f"idx_{idx}") for idx in predicted_indices]
-        print(f"  - Ảnh {img_filename}: Phát hiện {len(predicted_indices)} lớp: {class_names_found}")
+        # Lấy index của lớp (ví dụ: 'Red_Spot' -> 0)
+        target_class_index = class_name_to_index_map[class_name_str]
+        print(f"\n--- 🎯 Đang xử lý lớp: '{class_name_str}' (Index: {target_class_index}) ---")
+        
+        # Đường dẫn đầy đủ đến thư mục lớp input (ví dụ: .../top_20_results_per_class/Red_Spot)
+        current_class_input_dir = os.path.join(input_base_dir, class_name_str)
+        
+        # Tạo thư mục output tương ứng cho lớp này (ví dụ: .../grad_cam_results/Red_Spot)
+        current_class_output_dir = os.path.join(output_base_dir, class_name_str)
+        os.makedirs(current_class_output_dir, exist_ok=True)
+        
+        # --- 5. Duyệt qua từng ảnh trong thư mục lớp ---
+        image_files = [f for f in os.listdir(current_class_input_dir) if f.lower().endswith(image_extensions)]
+        
+        if not image_files:
+            print(f"  Không tìm thấy ảnh nào trong: {current_class_input_dir}")
+            continue
 
-    except Exception as e:
-        print(f"LỖI khi dự đoán ảnh {target_image_path}: {e}", file=sys.stderr)
-        sys.exit(1) # Thoát vì đây là ảnh duy nhất
+        print(f"  Tìm thấy {len(image_files)} ảnh. Bắt đầu chạy Grad-CAM...")
+        
+        # Sử dụng tqdm để xem tiến trình
+        for img_filename in tqdm(image_files, desc=f"  Lớp {class_name_str}", unit="ảnh"):
+            img_path = os.path.join(current_class_input_dir, img_filename)
+            
+            # Lấy tên file không có đuôi (ví dụ: 'conf_0.99_img1')
+            img_basename = os.path.splitext(img_filename)[0]
+            
+            # Tạo thư mục con riêng cho mỗi ảnh (để chứa các layer-heatmap)
+            # Ví dụ: .../grad_cam_results/Red_Spot/conf_0.99_img1
+            img_save_subdir = os.path.join(current_class_output_dir, img_basename)
+            os.makedirs(img_save_subdir, exist_ok=True)
 
-    # --- 6. Chạy Grad-CAM cho TỪNG LỚP đã dự đoán được ---
-    print(f"  - Bắt đầu chạy Grad-CAM cho {len(predicted_indices)} lớp đã phát hiện...")
-    
-    for target_class_index in predicted_indices:
-        class_name = class_names_map.get(target_class_index, f"idx_{target_class_index}")
-        print(f"    - Đang xử lý lớp: {class_name} (Index: {target_class_index})")
-        try:
-            # Chạy cho từng layer trong get_param_list()
-            for params in get_param_list():
-                model = yolo_heatmap(**params, target_class=target_class_index, show_result=False)
-                layer_idx = params['layer'][0]
+            # Copy ảnh gốc vào thư mục kết quả để tiện so sánh
+            shutil.copy(img_path, os.path.join(img_save_subdir, img_filename))
+            
+            # --- 6. Chạy Grad-CAM (giống logic code cũ của bạn) ---
+            try:
+                # Chạy cho từng layer trong get_param_list()
+                for params in get_param_list():
+                    # **QUAN TRỌNG**: Truyền đúng target_class=target_class_index
+                    model = yolo_heatmap(**params, target_class=target_class_index, show_result=False)
+                    layer_idx = params['layer'][0]
+                    
+                    # Tên file lưu heatmap
+                    save_file_path = os.path.join(img_save_subdir, f'cls_{target_class_index}_layer{layer_idx:02d}.png')
+                    model(img_path, save_file_path)
+
+                # Chạy cho 'mean' (all layers) từ get_params()
+                model_mean = yolo_heatmap(**get_params(), target_class=target_class_index, show_result=False)
+                mean_save_path = os.path.join(img_save_subdir, f'mean_cls_{target_class_index}.png')
+                model_mean(img_path, mean_save_path)
                 
-                # Tên file lưu heatmap (thêm index lớp vào tên)
-                save_file_path = os.path.join(img_save_dir, f'cls_{target_class_index}_{class_name}_layer{layer_idx:02d}.png')
-                model(target_image_path, save_file_path)
-
-            # Chạy cho 'mean' (all layers) từ get_params()
-            model_mean = yolo_heatmap(**get_params(), target_class=target_class_index, show_result=False)
-            mean_save_path = os.path.join(img_save_dir, f'mean_cls_{target_class_index}_{class_name}.png')
-            model_mean(target_image_path, mean_save_path)
-            
-        except Exception as e:
-            print(f"LỖI khi chạy Grad-CAM (lớp {target_class_index}) cho ảnh {target_image_path}: {e}", file=sys.stderr)
-            # Tiếp tục xử lý lớp tiếp theo
-
+            except Exception as e:
+                print(f"LỖI khi chạy Grad-CAM cho ảnh {img_path}: {e}", file=sys.stderr)
+                # Tiếp tục xử lý ảnh tiếp theo
+                
     print("\n--- Hoàn tất! 🚀 ---")
-    print(f"Tất cả kết quả Grad-CAM đã được lưu tại: {img_save_dir}")
+    print(f"Tất cả kết quả Grad-CAM đã được lưu tại: {output_base_dir}")

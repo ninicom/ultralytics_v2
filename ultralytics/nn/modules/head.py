@@ -116,6 +116,8 @@ class Detect(nn.Module):
         
         grad_cam(x[0])  # Example usage of grad_cam function, can be removed if not needed
         """Concatenate and return predicted bounding boxes and class probabilities."""
+        
+        print(f"Detect layer with {self.nl} detection layers")
         if self.end2end:
             return self.forward_end2end(x)
 
@@ -137,7 +139,8 @@ class Detect(nn.Module):
             outputs (dict | tuple): Training mode returns dict with one2many and one2one outputs.
                 Inference mode returns processed detections or tuple with detections and raw outputs.
         """
-        grad_cam(x[0])  # Example usage of grad_cam function, can be removed if not needed
+        grad_cam(x[0])  # Example usage of grad_cam function, can be removed if not needed        
+        print(f"Detect layer with {self.nl} detection layers")
         x_detach = [xi.detach() for xi in x]
         one2one = [
             torch.cat((self.one2one_cv2[i](x_detach[i]), self.one2one_cv3[i](x_detach[i])), 1) for i in range(self.nl)
@@ -162,6 +165,7 @@ class Detect(nn.Module):
             (torch.Tensor): Concatenated tensor of decoded bounding boxes and class probabilities.
         """
         # Inference path
+        print(f"_inference called with {self.nl} feature maps")
         grad_cam(x[0])  # Example usage of grad_cam function, can be removed if not needed
         shape = x[0].shape  # BCHW
         x_cat = torch.cat([xi.view(shape[0], self.no, -1) for xi in x], 2)
@@ -174,6 +178,12 @@ class Detect(nn.Module):
             cls = x_cat[:, self.reg_max * 4 :]
         else:
             box, cls = x_cat.split((self.reg_max * 4, self.nc), 1)
+
+        print(f"Box shape: {box.shape}, Cls shape: {cls.shape}")
+        print(box)
+        print(cls)
+        print(f"Max cls value: {cls.max().item()}")
+        print(f"Max cls sigmoid value: {cls.sigmoid().max().item()}")
 
         if self.export and self.format in {"tflite", "edgetpu"}:
             # Precompute normalization factor to increase numerical stability
@@ -190,6 +200,8 @@ class Detect(nn.Module):
             return dbox.transpose(1, 2), cls.sigmoid().permute(0, 2, 1)
         else:
             dbox = self.decode_bboxes(self.dfl(box), self.anchors.unsqueeze(0)) * self.strides
+        out = torch.cat((dbox, cls.sigmoid()), 1)
+        print(f"Output shape: {out.shape}")
 
         return torch.cat((dbox, cls.sigmoid()), 1)
 
