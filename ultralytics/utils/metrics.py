@@ -149,7 +149,7 @@ def siou_loss(
     box2: torch.Tensor,
     xywh: bool = True,
     SIoU: bool = True,
-    theta: float = 2.0,
+    theta: float = 4.0,
     eps: float = 1e-7,
 ) -> torch.Tensor:
     """

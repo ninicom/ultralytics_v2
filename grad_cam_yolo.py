@@ -389,7 +389,7 @@ def get_params():
         'weight': r'D:\SCFB_SIoU_P2\best.pt', # 现在只需要指定权重即可,不需要指定cfg
         'device': 'cpu',
         'method': 'GradCAM', # GradCAMPlusPlus, GradCAM, XGradCAM, EigenCAM, HiResCAM, LayerCAM, RandomCAM, EigenGradCAM, KPCA_CAM
-        'layer': [19, 22, 25, 28],
+        'layer': [23, 26, 29],
         'backward_type': 'all', # detect:<class, box, all> segment:<class, box, segment, all> pose:<box, keypoint, all> obb:<box, angle, all> classify:<all>
         'conf_threshold': 0.4, # 0.2
         'ratio': 0.02, # 0.02-0.1
@@ -411,7 +411,7 @@ def get_param_list():
         'task': 'detect',
         'img_size': 640,
     }
-    layers = [19, 22, 25, 28]
+    layers = [23, 26, 29]
     return [{**base, 'layer': [l]} for l in layers]
 '''
 # pip install grad-cam==1.5.4 --no-deps
@@ -432,9 +432,9 @@ if __name__ == '__main__':
 
     # --- 1. Thiết lập đường dẫn ---
     # Thư mục chứa các thư mục con của mỗi lớp (từ code trước)
-    input_base_dir = r"D:\fish_imga_grad" 
+    input_base_dir = r"D:\temp\resized_640x6402" 
     # Thư mục gốc để lưu kết quả Grad-CAM
-    output_base_dir = r"D:\fish_imga_grad_gradcam1"
+    output_base_dir = r"D:\temp\grad_cam_YOLOv11__scfb_2"
     
     # Xóa thư mục output cũ nếu tồn tại (để chạy lại cho sạch)
     if os.path.exists(output_base_dir):

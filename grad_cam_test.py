@@ -432,10 +432,10 @@ if __name__ == '__main__':
     # --- 1. Thiết lập đường dẫn ---
     
     # !!! THAY ĐỔI: Dán đường dẫn tuyệt đối đến ảnh của bạn vào đây
-    target_image_path = r"D:\gill3.jpg" # <<< THAY ĐỔI ĐƯỜNG DẪN NÀY
+    target_image_path = r"D:\fin_lessions.jpg" # <<< THAY ĐỔI ĐƯỜNG DẪN NÀY
     
     # Thư mục gốc để lưu kết quả Grad-CAM
-    output_base_dir = r"D:\fish_imga_grad_gradcam_single4" # <<< Có thể đổi tên
+    output_base_dir = r"D:\temp" # <<< Có thể đổi tên
     
     # Xóa thư mục output cũ nếu tồn tại (để chạy lại cho sạch)
     if os.path.exists(output_base_dir):
