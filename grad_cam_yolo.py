@@ -120,7 +120,7 @@ class ActivationsAndGradients:
             return torch.transpose(logits_[0], dim0=0, dim1=1)[indices[0]], torch.transpose(boxes_[0], dim0=0, dim1=1)[indices[0]], torch.transpose(angles_[0], dim0=0, dim1=1)[indices[0]]
         elif self.model.task == 'classify':
             return result[0]
-  
+ 
     def __call__(self, x):
         self.gradients = []
         self.activations = []
@@ -174,7 +174,7 @@ class yolo_detect_target(torch.nn.Module):
 
                 if class_index != self.target_class:
                     continue  # Bỏ qua nếu không phải class mong muốn
-            
+                
             # 🧠 Tính Grad-CAM theo loại đầu ra mong muốn
             if self.ouput_type in ['class', 'all']:
                 if self.end2end:
@@ -253,7 +253,8 @@ class yolo_classify_target(yolo_detect_target):
         return data.max()
 
 class yolo_heatmap:
-    def __init__(self, weight, device, method, layer, backward_type, conf_threshold, ratio, show_result, renormalize, task, img_size, target_class=None):
+    # ------------------- THAY ĐỔI 1: Thêm 'show_overlay_image=True' vào __init__ -------------------
+    def __init__(self, weight, device, method, layer, backward_type, conf_threshold, ratio, show_result, renormalize, task, img_size, target_class=None, show_overlay_image=True):
         device = torch.device(device)
         model_yolo = YOLO(weight)
         model_names = model_yolo.names
@@ -287,6 +288,9 @@ class yolo_heatmap:
         method.activations_and_grads = ActivationsAndGradients(model, target_layers, None)
         
         colors = np.random.uniform(0, 255, size=(len(model_names), 3)).astype(np.int32)
+        
+        # Lưu tham số mới
+        self.show_overlay_image = show_overlay_image
         self.__dict__.update(locals())
     
     def post_process(self, result):
@@ -311,6 +315,7 @@ class yolo_heatmap:
         eigencam_image_renormalized = show_cam_on_image(image_float_np, renormalized_cam, use_rgb=True)
         return eigencam_image_renormalized
     
+    # ------------------- THAY ĐỔI 2: Cập nhật hàm process -------------------
     def process(self, img_path, save_path):
         # img process
         try:
@@ -331,18 +336,35 @@ class yolo_heatmap:
             return
         
         grayscale_cam = grayscale_cam[0, :]
-        cam_image = show_cam_on_image(img, grayscale_cam, use_rgb=True)
         
-        pred = self.model_yolo.predict(tensor, conf=self.conf_threshold, iou=0.7)[0]
-        if self.renormalize and self.task in ['detect', 'segment', 'pose']:
-            cam_image = self.renormalize_cam_in_bounding_boxes(pred.boxes.xyxy.cpu().detach().numpy().astype(np.int32), img, grayscale_cam)
-        if self.show_result:
-            cam_image = pred.plot(img=cam_image,
-                                  conf=True, # 显示置信度
-                                  font_size=None, # 字体大小，None为根据当前image尺寸计算
-                                  line_width=None, # 线条宽度，None为根据当前image尺寸计算
-                                  labels=False, # 显示标签
-                                  )
+        # --- LOGIC MỚI BẮT ĐẦU TỪ ĐÂY ---
+        if self.show_overlay_image:
+            # --- A: Hiển thị overlay (ảnh gốc + heatmap) (Hành vi cũ) ---
+            cam_image = show_cam_on_image(img, grayscale_cam, use_rgb=True)
+            
+            # Lấy dự đoán (chỉ cần khi show_result=True hoặc renormalize=True)
+            pred = self.model_yolo.predict(tensor, conf=self.conf_threshold, iou=0.7)[0]
+            
+            if self.renormalize and self.task in ['detect', 'segment', 'pose']:
+                cam_image = self.renormalize_cam_in_bounding_boxes(pred.boxes.xyxy.cpu().detach().numpy().astype(np.int32), img, grayscale_cam)
+            
+            if self.show_result:
+                cam_image = pred.plot(img=cam_image,
+                                      conf=True, # 显示置信度
+                                      font_size=None, # 字体大小，None为根据当前image尺寸计算
+                                      line_width=None, # 线条宽度，None为根据当前image尺寸计算
+                                      labels=False, # 显示标签
+                                      )
+        else:
+            # --- B: Chỉ hiển thị heatmap (Theo yêu cầu mới) ---
+            # Chuyển grayscale_cam (float 0-1) thành ảnh màu (uint8 0-255)
+            cam_uint8 = np.uint8(255 * grayscale_cam)
+            cam_image = cv2.applyColorMap(cam_uint8, cv2.COLORMAP_JET)
+            cam_image = cv2.cvtColor(cam_image, cv2.COLOR_BGR2RGB) # Chuyển BGR (cv2) -> RGB (PIL)
+        # --- LOGIC MỚI KẾT THÚC ---
+            
+        
+        # Điểm chung: Cả cam_image (A) và (B) đều là mảng numpy uint8 (0-255)
         
         # 去掉padding边界
         cam_image = cam_image[top:cam_image.shape[0] - bottom, left:cam_image.shape[1] - right]
@@ -386,57 +408,49 @@ class yolo_heatmap:
 
 def get_params():
     params = {
-        'weight': r'D:\SCFB_SIoU_P2\best.pt', # 现在只需要指定权重即可,不需要指定cfg
+        'weight': r'D:\CIoU_Fish_v4.5\train\weights\best.pt', # 现在只需要指定权重即可,不需要指定cfg
         'device': 'cpu',
         'method': 'GradCAM', # GradCAMPlusPlus, GradCAM, XGradCAM, EigenCAM, HiResCAM, LayerCAM, RandomCAM, EigenGradCAM, KPCA_CAM
-        'layer': [23, 26, 29],
+        'layer': [16, 19, 22],
         'backward_type': 'all', # detect:<class, box, all> segment:<class, box, segment, all> pose:<box, keypoint, all> obb:<box, angle, all> classify:<all>
         'conf_threshold': 0.4, # 0.2
         'ratio': 0.02, # 0.02-0.1
+        'show_result': False, # (Giữ nguyên) Điều khiển việc VẼ BOX, chỉ hoạt động nếu show_overlay_image=True
         'renormalize': False, # 需要把热力图限制在框内请设置为True(仅对detect,segment,pose有效)
         'task':'detect', # 任务(detect,segment,pose,obb,classify)
         'img_size': 640, # 图像尺寸
     }
     return params
-     
+    
 def get_param_list():
     base = {
-        'weight': r'D:\SCFB_SIoU_P2\best.pt',
+        'weight': r'D:\CIoU_Fish_v4.5\train\weights\best.pt',
         'device': 'cpu',
         'method': 'GradCAM',
         'backward_type': 'all',
         'conf_threshold': 0.4,
         'ratio': 0.02,
+        'show_result': False, # (Giữ nguyên)
         'renormalize': False,
         'task': 'detect',
         'img_size': 640,
     }
-    layers = [23, 26, 29]
+    layers = [16, 19, 22]
     return [{**base, 'layer': [l]} for l in layers]
-'''
-# pip install grad-cam==1.5.4 --no-deps
-if __name__ == '__main__':
-    img_path = r'D:/test_grad/20.jpg'
-    save_path = r'D:/grad_cam_2/20'
 
-    for params in get_param_list():
-        model = yolo_heatmap(**params)
-        layer_idx = params['layer'][0]
-        model(img_path, f'{save_path}/layer_{layer_idx:02d}.png')
-
-    model = yolo_heatmap(**get_params())
-    model(img_path, f'{save_path}/mean.png')
-'''
-
+# ------------------- THAY ĐỔI 3: Cập nhật khối main -------------------
 if __name__ == '__main__':
 
     # --- 1. Thiết lập đường dẫn ---
-    # Thư mục chứa các thư mục con của mỗi lớp (từ code trước)
-    input_base_dir = r"D:\temp\resized_640x6402" 
-    # Thư mục gốc để lưu kết quả Grad-CAM
-    output_base_dir = r"D:\temp\grad_cam_YOLOv11__scfb_2"
+    input_base_dir = r"D:\temp\gra" 
+    output_base_dir = r"D:\temp\grad_cam_YOLOv11_ONLY_HEATMAP" # Đổi tên thư mục output
     
-    # Xóa thư mục output cũ nếu tồn tại (để chạy lại cho sạch)
+    # === TÙY CHỌN MỚI ===
+    # True: Chồng heatmap lên ảnh gốc (hành vi cũ)
+    # False: Chỉ hiển thị heatmap đã tô màu (theo yêu cầu của bạn)
+    SHOW_OVERLAY_ON_IMAGE = False 
+    # =====================
+
     if os.path.exists(output_base_dir):
         print(f"Đang xóa thư mục kết quả cũ: {output_base_dir}")
         shutil.rmtree(output_base_dir)
@@ -444,26 +458,20 @@ if __name__ == '__main__':
 
 
     # --- 2. Lấy mapping Tên Lớp -> Index ---
-    # Lấy thông tin model (đặc biệt là 'weight') từ hàm get_params
     base_params = get_params()
     model_weight = base_params['weight']
     
     print("Đang tải model để lấy danh sách tên lớp...")
     try:
-        # Tải model tạm thời CHỈ để lấy 'names'
         temp_model = YOLO(model_weight)
-        class_names_map = temp_model.names # Đây là map {0: 'name1', 1: 'name2', ...}
-        
-        # Đảo ngược map để có: {'name1': 0, 'name2': 1, ...}
+        class_names_map = temp_model.names 
         class_name_to_index_map = {name: idx for idx, name in class_names_map.items()}
-        
         print(f"Đã tìm thấy {len(class_name_to_index_map)} lớp. Mapping: {class_name_to_index_map}")
-        del temp_model # Giải phóng bộ nhớ
+        del temp_model 
     except Exception as e:
         print(f"LỖI: Không thể tải model từ '{model_weight}' để lấy tên lớp. Lỗi: {e}", file=sys.stderr)
-        sys.exit(1) # Thoát nếu không tải được model
+        sys.exit(1) 
         
-    # Các định dạng ảnh cần tìm
     image_extensions = ('.jpg', '.jpeg', '.png', '.bmp', '.webp')
 
     # --- 3. Duyệt qua các thư mục lớp trong input_base_dir ---
@@ -471,7 +479,6 @@ if __name__ == '__main__':
         print(f"LỖI: Thư mục input '{input_base_dir}' không tồn tại!", file=sys.stderr)
         sys.exit(1)
 
-    # Lấy danh sách các thư mục con (là tên các lớp)
     try:
         class_dirs = [d for d in os.listdir(input_base_dir) if os.path.isdir(os.path.join(input_base_dir, d))]
     except Exception as e:
@@ -487,14 +494,10 @@ if __name__ == '__main__':
             print(f"Cảnh báo: Tên thư mục '{class_name_str}' không khớp với bất kỳ lớp nào trong model. Bỏ qua...")
             continue
             
-        # Lấy index của lớp (ví dụ: 'Red_Spot' -> 0)
         target_class_index = class_name_to_index_map[class_name_str]
         print(f"\n--- 🎯 Đang xử lý lớp: '{class_name_str}' (Index: {target_class_index}) ---")
         
-        # Đường dẫn đầy đủ đến thư mục lớp input (ví dụ: .../top_20_results_per_class/Red_Spot)
         current_class_input_dir = os.path.join(input_base_dir, class_name_str)
-        
-        # Tạo thư mục output tương ứng cho lớp này (ví dụ: .../grad_cam_results/Red_Spot)
         current_class_output_dir = os.path.join(output_base_dir, class_name_str)
         os.makedirs(current_class_output_dir, exist_ok=True)
         
@@ -502,46 +505,44 @@ if __name__ == '__main__':
         image_files = [f for f in os.listdir(current_class_input_dir) if f.lower().endswith(image_extensions)]
         
         if not image_files:
-            print(f"  Không tìm thấy ảnh nào trong: {current_class_input_dir}")
+            print(f" 	Không tìm thấy ảnh nào trong: {current_class_input_dir}")
             continue
 
-        print(f"  Tìm thấy {len(image_files)} ảnh. Bắt đầu chạy Grad-CAM...")
+        print(f" 	Tìm thấy {len(image_files)} ảnh. Bắt đầu chạy Grad-CAM...")
         
-        # Sử dụng tqdm để xem tiến trình
-        for img_filename in tqdm(image_files, desc=f"  Lớp {class_name_str}", unit="ảnh"):
+        for img_filename in tqdm(image_files, desc=f" 	Lớp {class_name_str}", unit="ảnh"):
             img_path = os.path.join(current_class_input_dir, img_filename)
-            
-            # Lấy tên file không có đuôi (ví dụ: 'conf_0.99_img1')
             img_basename = os.path.splitext(img_filename)[0]
-            
-            # Tạo thư mục con riêng cho mỗi ảnh (để chứa các layer-heatmap)
-            # Ví dụ: .../grad_cam_results/Red_Spot/conf_0.99_img1
             img_save_subdir = os.path.join(current_class_output_dir, img_basename)
             os.makedirs(img_save_subdir, exist_ok=True)
-
-            # Copy ảnh gốc vào thư mục kết quả để tiện so sánh
-            shutil.copy(img_path, os.path.join(img_save_subdir, img_filename))
             
-            # --- 6. Chạy Grad-CAM (giống logic code cũ của bạn) ---
+            # Copy ảnh gốc vào thư mục kết quả để tiện so sánh
+            # (Bạn có thể tắt dòng này nếu muốn)
+            shutil.copy(img_path, os.path.join(img_save_subdir, "original_" + img_filename))
+            
+            # --- 6. Chạy Grad-CAM (Sử dụng tùy chọn mới) ---
             try:
-                # Chạy cho từng layer trong get_param_list()
+                # Chạy cho từng layer
                 for params in get_param_list():
-                    # **QUAN TRỌNG**: Truyền đúng target_class=target_class_index
-                    model = yolo_heatmap(**params, target_class=target_class_index, show_result=False)
-                    layer_idx = params['layer'][0]
+                    # Truyền target_class VÀ show_overlay_image
+                    model = yolo_heatmap(**params, 
+                                         target_class=target_class_index, 
+                                         show_overlay_image=SHOW_OVERLAY_ON_IMAGE)
                     
-                    # Tên file lưu heatmap
+                    layer_idx = params['layer'][0]
                     save_file_path = os.path.join(img_save_subdir, f'cls_{target_class_index}_layer{layer_idx:02d}.png')
                     model(img_path, save_file_path)
 
-                # Chạy cho 'mean' (all layers) từ get_params()
-                model_mean = yolo_heatmap(**get_params(), target_class=target_class_index, show_result=False)
+                # Chạy cho 'mean' (all layers)
+                model_mean = yolo_heatmap(**get_params(), 
+                                          target_class=target_class_index, 
+                                          show_overlay_image=SHOW_OVERLAY_ON_IMAGE)
+                
                 mean_save_path = os.path.join(img_save_subdir, f'mean_cls_{target_class_index}.png')
                 model_mean(img_path, mean_save_path)
                 
             except Exception as e:
                 print(f"LỖI khi chạy Grad-CAM cho ảnh {img_path}: {e}", file=sys.stderr)
-                # Tiếp tục xử lý ảnh tiếp theo
                 
     print("\n--- Hoàn tất! 🚀 ---")
     print(f"Tất cả kết quả Grad-CAM đã được lưu tại: {output_base_dir}")
